@@ -189,6 +189,66 @@ def extract_from_fact_cheat(fact_cheat_content: str) -> dict:
     return json.loads(raw)
 
 
+BLOG_POST_EXTRACTION_PROMPT = """You are a semantic SEO expert. Given the full text of a blog post, extract structured metadata for building a comprehensive BlogPosting schema.
+
+Blog Post Content:
+---
+{post_content}
+---
+
+Business context: {business_name} — {website_url}
+
+Return ONLY valid JSON (no markdown, no explanation) with this structure (omit fields not found):
+{{
+  "post_title": "The exact headline / H1 of the post",
+  "post_description": "A 1-2 sentence meta description summarizing the post. If not in the text, write one from the intro.",
+  "date_published": "Date in YYYY-MM-DD format if found in the post, else empty string",
+  "date_modified": "Modification date in YYYY-MM-DD format if found, else empty string",
+  "author_name": "Author name if mentioned in the post, else empty string",
+  "keywords": "5-10 comma-separated keywords that best represent this post's topic",
+  "article_section": "The topic category/section this post belongs to (e.g. Plumbing Tips, HVAC Maintenance, Home Improvement)",
+  "word_count": "Approximate word count as a string (e.g. 1200)",
+  "mentions": [
+    {{
+      "name": "entity name mentioned in the article",
+      "type": "Thing or Person or Place or Organization or Product",
+      "wikidata_id": "https://www.wikidata.org/wiki/QXXXXXX",
+      "wikipedia_url": "https://en.wikipedia.org/wiki/Entity_Name"
+    }}
+  ]
+}}
+
+For "mentions": identify 4-8 significant named entities, concepts, technologies, or topics referenced in the post that have Wikidata entries. Include real Wikidata/Wikipedia URLs — skip any entity you are not confident about.
+For "post_title": use the exact title/headline from the content if present, not a paraphrase.
+"""
+
+
+def extract_from_blog_post(post_content: str, business_name: str, website_url: str) -> dict:
+    """Extract BlogPosting schema metadata from uploaded blog post content."""
+    client = get_client()
+    model = get_model()
+
+    prompt = BLOG_POST_EXTRACTION_PROMPT.format(
+        post_content=post_content[:8000],  # Cap to avoid token overflow
+        business_name=business_name,
+        website_url=website_url,
+    )
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        max_tokens=2000,
+    )
+
+    raw = response.choices[0].message.content.strip()
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        raw = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+
+    return json.loads(raw)
+
+
 def suggest_wikidata_for_topics(topics: list[str], business_name: str, business_type: str) -> list[dict]:
     """Suggest Wikidata IDs for a list of topic strings."""
     if not topics:

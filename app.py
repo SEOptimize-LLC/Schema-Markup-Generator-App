@@ -1,6 +1,6 @@
 import streamlit as st
 
-from src.ai.enrichment import enrich_business, extract_from_fact_cheat
+from src.ai.enrichment import enrich_business, extract_from_fact_cheat, extract_from_blog_post
 from src.ai.scraper import scrape_business_page
 from src.generators.website import generate_homepage, generate_about_page, generate_contact_page, generate_website
 from src.generators.organization import generate_organization, generate_local_business
@@ -186,7 +186,7 @@ if st.session_state["step"] == 1:
                 if not merged.get("country"):
                     merged["country"] = "US"
                 st.session_state["business_data"] = merged
-                # Pre-populate opening hours from scraper if found
+                # Pre-populate opening hours widget keys
                 if scraped.get("opening_hours"):
                     for oh in scraped["opening_hours"]:
                         d = oh.get("day", "")
@@ -194,6 +194,12 @@ if st.session_state["step"] == 1:
                             st.session_state[f"open_{d}"] = True
                             st.session_state[f"opens_{d}"] = oh.get("opens", "09:00")
                             st.session_state[f"closes_{d}"] = oh.get("closes", "17:00")
+                # Pre-populate breadcrumb items if scraped
+                if scraped.get("breadcrumb_items"):
+                    st.session_state["breadcrumb_items"] = scraped["breadcrumb_items"]
+                # Store nav links for related_links field on homepage tab
+                if scraped.get("nav_links"):
+                    st.session_state["scraped_nav_links"] = scraped["nav_links"]
             except Exception as e:
                 st.warning(f"Scraping partially failed: {e} — continuing with AI enrichment.")
 
@@ -255,7 +261,7 @@ if st.session_state["step"] == 1:
     st.markdown('<div class="section-header">knowsAbout — Topical Authority</div>', unsafe_allow_html=True)
     st.caption("Topics the business is an expert in. Each row: Topic Name | Wikidata URL | Wikipedia URL")
     ai_knows = ai.get("knows_about", [])
-    default_knows = "\n".join([f"{k.get('name','')} | {k.get('wikidata_id','')} | {k.get('wikipedia_url','')}" for k in (st.session_state["business_data"].get("knows_about_raw", ai_knows))])
+    default_knows = "\n".join([f"{k.get('name', '')} | {k.get('wikidata_id', '')} | {k.get('wikipedia_url', '')}" for k in (st.session_state["business_data"].get("knows_about_raw", ai_knows))])
     knows_about_raw = st.text_area("knowsAbout Topics (one per line: Name | Wikidata URL | Wikipedia URL)", value=default_knows, height=150, placeholder="HVAC | https://www.wikidata.org/wiki/Q1798773 | https://en.wikipedia.org/wiki/Heating,_ventilation,_and_air_conditioning")
 
     st.markdown('<div class="section-header">additionalType — Entity Disambiguation</div>', unsafe_allow_html=True)
@@ -452,9 +458,13 @@ elif st.session_state["step"] == 3:
             # ── Homepage ──────────────────────────────────────────────────────
             if schema_key == "homepage":
                 st.caption("Homepage schema nests Organization, WebSite, and Person.")
-                data["page_title"] = st.text_input("Page Title", value=data.get("page_title", data.get("business_name", "")), key="hp_title")
+                scraped_title = data.get("page_title") or data.get("business_name", "")
+                data["page_title"] = st.text_input("Page Title", value=scraped_title, key="hp_title")
                 data["page_description"] = st.text_area("Meta Description", value=data.get("page_description", data.get("description", "")), height=80, key="hp_desc")
-                related_links_raw = st.text_area("relatedLink URLs (one per line)", value="\n".join(data.get("related_links", [])), height=80, key="hp_related", placeholder=f"{base_url}/about\n{base_url}/services\n{base_url}/contact")
+                # Pre-fill related links from scraped nav if available
+                nav_links = st.session_state.get("scraped_nav_links", [])
+                default_related = data.get("related_links") or [l["url"] for l in nav_links[:6]]
+                related_links_raw = st.text_area("relatedLink URLs (one per line)", value="\n".join(default_related), height=80, key="hp_related", placeholder=f"{base_url}/about\n{base_url}/services\n{base_url}/contact")
                 data["related_links"] = parse_urls_input(related_links_raw)
 
             # ── WebSite ───────────────────────────────────────────────────────
@@ -554,6 +564,40 @@ elif st.session_state["step"] == 3:
             # ── Blog Post ─────────────────────────────────────────────────────
             elif schema_key == "blog":
                 st.caption("BlogPosting with author, publisher, and entity mentions.")
+
+                # Blog post file upload
+                uploaded_post = st.file_uploader(
+                    "Upload Blog Post (.txt or .md) to auto-fill fields",
+                    type=["txt", "md"],
+                    key="blog_post_uploader",
+                    help="Paste your blog post content as a .txt or .md file — title, date, keywords, and entity mentions will be extracted automatically.",
+                )
+                if uploaded_post is not None:
+                    col_bp1, col_bp2 = st.columns([3, 1])
+                    with col_bp1:
+                        st.info(f"📄 **{uploaded_post.name}** ready to extract.")
+                    with col_bp2:
+                        extract_post_btn = st.button("📋 Extract from Post", use_container_width=True, key="extract_post_btn")
+                    if extract_post_btn:
+                        with st.spinner("Extracting post metadata and entity mentions..."):
+                            try:
+                                post_content = uploaded_post.read().decode("utf-8", errors="ignore")
+                                extracted_post = extract_from_blog_post(
+                                    post_content,
+                                    data.get("founder_name", data.get("business_name", "")),
+                                    data.get("website_url", ""),
+                                )
+                                for k, v in extracted_post.items():
+                                    if v and k != "mentions":
+                                        data[k] = v
+                                if extracted_post.get("mentions"):
+                                    data["mentions"] = extracted_post["mentions"]
+                                st.session_state["business_data"] = data
+                                st.success("Post metadata extracted! Fields updated below.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Extraction failed: {e}")
+
                 data["post_url"] = st.text_input("Post URL *", value=data.get("post_url", ""), placeholder=f"{base_url}/blog/post-title", key="blog_url")
                 data["post_title"] = st.text_input("Post Title *", value=data.get("post_title", ""), key="blog_title")
                 data["post_description"] = st.text_area("Meta Description", value=data.get("post_description", ""), height=60, key="blog_desc")
@@ -567,7 +611,7 @@ elif st.session_state["step"] == 3:
                 data["article_section"] = st.text_input("Article Section", value=data.get("article_section", ""), key="blog_section")
                 st.markdown("**Mentions (Wikidata entities in this article)**")
                 st.caption("Name | Wikidata URL | Wikipedia URL")
-                mentions_raw = st.text_area("Mentions", value="\n".join([f"{m.get('name','')} | {m.get('wikidata_id','')} | {m.get('wikipedia_url','')}" for m in data.get("mentions", [])]), height=100, key="blog_mentions")
+                mentions_raw = st.text_area("Mentions", value="\n".join([f"{m.get('name', '')} | {m.get('wikidata_id', '')} | {m.get('wikipedia_url', '')}" for m in data.get("mentions", [])]), height=100, key="blog_mentions")
                 mentions = []
                 for line in mentions_raw.strip().split("\n"):
                     parts = [p.strip() for p in line.split("|")]

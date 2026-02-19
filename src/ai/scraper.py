@@ -115,8 +115,19 @@ def scrape_business_page(url: str) -> dict:
                 if maps_iframe:
                     result["has_map"] = maps_iframe.get("src", "")
 
-        # ── 7. Country default ─────────────────────────────────────────────────
-        # Default to US unless scraping found something else
+        # ── 7. Page title ──────────────────────────────────────────────────────
+        result["page_title"] = (
+            og.get("og:title", "")
+            or (soup.title.string.strip() if soup.title else "")
+        )
+
+        # ── 8. Navigation links (for relatedLink / breadcrumb) ─────────────────
+        result["nav_links"] = _extract_nav_links(soup, url)
+
+        # ── 9. Breadcrumb from existing JSON-LD ───────────────────────────────
+        result["breadcrumb_items"] = _extract_breadcrumb(soup, url)
+
+        # ── 10. Country default ────────────────────────────────────────────────
         if not result.get("country"):
             result["country"] = "US"
 
@@ -124,6 +135,63 @@ def scrape_business_page(url: str) -> dict:
         pass
 
     return {k: v for k, v in result.items() if v}
+
+
+def _extract_nav_links(soup: BeautifulSoup, base_url: str) -> list:
+    """Extract main navigation links — useful for relatedLink and breadcrumbs."""
+    parsed_base = urlparse(base_url)
+    links = []
+    seen = set()
+
+    nav = soup.find("nav") or soup.find(attrs={"role": "navigation"})
+    container = nav if nav else soup
+
+    for a in container.find_all("a", href=True):
+        href = a["href"].strip()
+        name = a.get_text(strip=True)
+        if not href or not name or len(name) > 60:
+            continue
+        # Internal links only, skip anchors and tel:/mailto:
+        if href.startswith(("#", "tel:", "mailto:", "javascript:")):
+            continue
+        full = urljoin(base_url, href)
+        parsed = urlparse(full)
+        if parsed.netloc and parsed.netloc != parsed_base.netloc:
+            continue
+        if full not in seen:
+            seen.add(full)
+            links.append({"name": name, "url": full})
+        if len(links) >= 12:
+            break
+
+    return links
+
+
+def _extract_breadcrumb(soup: BeautifulSoup, base_url: str) -> list:
+    """Extract BreadcrumbList items from existing JSON-LD on the page."""
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            raw = json.loads(script.string or "")
+            schemas = raw.get("@graph", [raw]) if isinstance(raw, dict) else raw
+            if not isinstance(schemas, list):
+                schemas = [schemas]
+            for s in schemas:
+                if not isinstance(s, dict):
+                    continue
+                if s.get("@type") == "BreadcrumbList":
+                    items = []
+                    for el in s.get("itemListElement", []):
+                        name = el.get("name", "")
+                        item_url = el.get("item", base_url)
+                        if isinstance(item_url, dict):
+                            item_url = item_url.get("@id", base_url)
+                        if name:
+                            items.append({"name": name, "url": item_url})
+                    if items:
+                        return items
+        except Exception:
+            continue
+    return []
 
 
 def _merge_from_schema(result: dict, s: dict) -> None:
