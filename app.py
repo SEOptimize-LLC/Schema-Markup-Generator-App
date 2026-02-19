@@ -1,7 +1,9 @@
+import re
+
 import streamlit as st
 
 from src.ai.enrichment import enrich_business, extract_from_fact_cheat, extract_from_blog_post
-from src.ai.scraper import scrape_business_page
+from src.ai.scraper import scrape_business_page, parse_sitemap
 from src.generators.website import generate_homepage, generate_about_page, generate_contact_page, generate_website
 from src.generators.organization import generate_organization, generate_local_business
 from src.generators.person import generate_person
@@ -145,6 +147,11 @@ if st.session_state["step"] == 1:
                             }
                             for s in extracted["services"]
                         ]
+                        # Sync widget keys so cached empty values don't override new data
+                        for idx, s in enumerate(st.session_state["services"]):
+                            st.session_state[f"svc_name_{idx}"] = s.get("name", "")
+                            st.session_state[f"svc_url_{idx}"] = s.get("url", "")
+                            st.session_state[f"svc_type_{idx}"] = s.get("service_type", s.get("name", ""))
 
                     # Pre-populate opening hours widget keys so checkboxes render correctly
                     if extracted.get("has_24_7"):
@@ -165,6 +172,78 @@ if st.session_state["step"] == 1:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Extraction failed: {e}")
+
+    # ── Sitemap Import ────────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Sitemap Import (Optional)</div>', unsafe_allow_html=True)
+    st.caption("Paste sitemap URLs to auto-populate services (with titles/H1s) and service areas/cities.")
+    col_sm1, col_sm2 = st.columns(2)
+    with col_sm1:
+        service_sitemap_url = st.text_input(
+            "Service Pages Sitemap URL",
+            placeholder="https://example.com/page-sitemap.xml",
+            key="service_sitemap_url",
+        )
+    with col_sm2:
+        locations_sitemap_url = st.text_input(
+            "Locations / Service Areas Sitemap URL",
+            placeholder="https://example.com/locations-sitemap.xml",
+            key="locations_sitemap_url",
+        )
+
+    parse_sitemaps_btn = st.button(
+        "🗺️ Parse Sitemaps",
+        disabled=not (service_sitemap_url or locations_sitemap_url),
+    )
+
+    if parse_sitemaps_btn:
+        svc_count = 0
+        city_count = 0
+
+        if service_sitemap_url:
+            with st.spinner("Fetching service pages and extracting titles/H1s... (this may take ~30 seconds)"):
+                svc_pages = parse_sitemap(normalize_url(service_sitemap_url), scrape_titles=True, max_pages=50)
+            if svc_pages:
+                st.session_state["services"] = [
+                    {
+                        "name": p["name"],
+                        "url": p["url"],
+                        "service_type": p["name"],
+                        "audience": "",
+                    }
+                    for p in svc_pages
+                ]
+                for idx, s in enumerate(st.session_state["services"]):
+                    st.session_state[f"svc_name_{idx}"] = s["name"]
+                    st.session_state[f"svc_url_{idx}"] = s["url"]
+                    st.session_state[f"svc_type_{idx}"] = s["name"]
+                svc_count = len(svc_pages)
+
+        if locations_sitemap_url:
+            with st.spinner("Fetching location pages and extracting city names..."):
+                loc_pages = parse_sitemap(normalize_url(locations_sitemap_url), scrape_titles=True, max_pages=100)
+            if loc_pages:
+                def _extract_city(name):
+                    match = re.search(r"\bin\s+(.+)$", name, re.IGNORECASE)
+                    return match.group(1).strip() if match else name.strip()
+
+                cities_from_sitemap = [_extract_city(p["name"]) for p in loc_pages]
+                existing = st.session_state["business_data"].get("cities", [])
+                merged_cities = list(dict.fromkeys(existing + cities_from_sitemap))
+                bdata = dict(st.session_state["business_data"])
+                bdata["cities"] = merged_cities
+                st.session_state["business_data"] = bdata
+                city_count = len(cities_from_sitemap)
+
+        parts = []
+        if svc_count:
+            parts.append(f"{svc_count} service page(s)")
+        if city_count:
+            parts.append(f"{city_count} location(s) added to Cities Served")
+        if parts:
+            st.success(f"✅ Imported: {', '.join(parts)}.")
+        else:
+            st.warning("No pages found in the sitemap(s). Check the URLs and try again.")
+        st.rerun()
 
     st.markdown('<div class="section-header">AI Enrichment + Website Scraping</div>', unsafe_allow_html=True)
     st.caption("Scrapes the website URL for logo, images, phone, address, maps link, and existing schema — then calls AI for Wikidata, entity links, and topical authority topics.")

@@ -5,6 +5,7 @@ existing JSON-LD already on the page.
 """
 import json
 import re
+import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -296,6 +297,57 @@ def _find_logo(soup: BeautifulSoup, base_url: str) -> str:
             return urljoin(base_url, img["src"])
 
     return ""
+
+
+def parse_sitemap(sitemap_url: str, scrape_titles: bool = True, max_pages: int = 50) -> list:
+    """
+    Parse an XML sitemap and return a list of {"name": title/h1, "url": url} dicts.
+    If scrape_titles is True, fetches each page and extracts the H1 (or <title> as fallback).
+    Falls back to a cleaned URL slug if no title is found.
+    Never raises — returns empty list on failure.
+    """
+    result = []
+    try:
+        resp = requests.get(sitemap_url, headers=HEADERS, timeout=15, allow_redirects=True)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+
+        # Strip XML namespace from tag names
+        tag = root.tag
+        ns_prefix = tag[: tag.index("}") + 1] if tag.startswith("{") else ""
+
+        locs = [
+            el.text.strip()
+            for el in root.iter(f"{ns_prefix}loc")
+            if el.text and el.text.strip()
+        ]
+        locs = locs[:max_pages]
+
+        for url in locs:
+            name = ""
+            if scrape_titles:
+                try:
+                    page_resp = requests.get(url, headers=HEADERS, timeout=8, allow_redirects=True)
+                    if page_resp.status_code == 200:
+                        soup = BeautifulSoup(page_resp.text, "html.parser")
+                        h1 = soup.find("h1")
+                        if h1:
+                            name = h1.get_text(strip=True)
+                        elif soup.title and soup.title.string:
+                            name = soup.title.string.strip()
+                except Exception:
+                    pass
+
+            if not name:
+                slug = url.rstrip("/").split("/")[-1]
+                name = slug.replace("-", " ").replace("_", " ").title()
+
+            result.append({"name": name, "url": url})
+
+    except Exception:
+        pass
+
+    return result
 
 
 def _parse_opening_hours(hours_data) -> list:
