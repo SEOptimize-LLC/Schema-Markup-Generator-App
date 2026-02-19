@@ -139,8 +139,8 @@ Return ONLY valid JSON (no markdown, no explanation) with this structure (omit a
   "aggregate_rating_value": "average rating number (e.g. 4.8)",
   "aggregate_rating_count": "number of reviews as string",
   "payment_accepted": "payment methods accepted",
-  "cities": ["list", "of", "cities", "served"],
-  "area_served_name": "general service area description",
+  "cities": ["every", "individual", "city", "county", "or", "area", "served"],
+  "area_served_name": "general service area label e.g. Greater Salt Lake City",
   "opening_hours": [
     {{"day": "Monday", "opens": "09:00", "closes": "17:00"}}
   ],
@@ -157,7 +157,13 @@ Return ONLY valid JSON (no markdown, no explanation) with this structure (omit a
   "financing_notes": "any financing information"
 }}
 
-Extract only information explicitly stated in the document. Do not infer or fabricate. For opening_hours, if the document says "24/7" set all days to opens: "00:00", closes: "23:59". For services, extract each distinct service mentioned.
+Rules:
+- Extract only information explicitly stated. Do not fabricate.
+- "cities": split ALL individual cities, towns, and counties from service area text. E.g. "Serves Salt Lake, Utah, & Davis Counties" → ["Salt Lake County", "Utah County", "Davis County"]. Include every named place from any list or sentence describing service coverage.
+- "country": default to "US" whenever city/state names are clearly American (Utah, Texas, California, etc.). Only use a different country if explicitly stated.
+- "state": extract full US state name or abbreviation from any city/state references in the document.
+- "opening_hours": if document says "24/7" or "available 24 hours", set all 7 days to opens "00:00" closes "23:59".
+- "services": extract every distinct service or service category mentioned anywhere.
 """
 
 

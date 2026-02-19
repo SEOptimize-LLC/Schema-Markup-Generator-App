@@ -1,6 +1,7 @@
 import streamlit as st
 
 from src.ai.enrichment import enrich_business, extract_from_fact_cheat
+from src.ai.scraper import scrape_business_page
 from src.generators.website import generate_homepage, generate_about_page, generate_contact_page, generate_website
 from src.generators.organization import generate_organization, generate_local_business
 from src.generators.person import generate_person
@@ -165,18 +166,47 @@ if st.session_state["step"] == 1:
                 except Exception as e:
                     st.error(f"Extraction failed: {e}")
 
-    st.markdown('<div class="section-header">AI Enrichment</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">AI Enrichment + Website Scraping</div>', unsafe_allow_html=True)
+    st.caption("Scrapes the website URL for logo, images, phone, address, maps link, and existing schema — then calls AI for Wikidata, entity links, and topical authority topics.")
     col_enrich1, col_enrich2 = st.columns([3, 1])
     with col_enrich2:
         enrich_btn = st.button("✨ Enrich with AI", use_container_width=True, disabled=not (business_name and website_url))
 
     if enrich_btn:
-        with st.spinner("Analyzing business with Claude Sonnet 4.5..."):
+        scraped = {}
+        with st.spinner("Step 1/2 — Scraping website for logo, images, address, and schema data..."):
             try:
-                enriched = enrich_business(business_name, website_url, business_type)
+                scraped = scrape_business_page(normalize_url(website_url))
+                # Merge scraped data into business_data immediately
+                merged = dict(st.session_state["business_data"])
+                for k, v in scraped.items():
+                    if v and not merged.get(k):
+                        merged[k] = v
+                # Default country to US if not set
+                if not merged.get("country"):
+                    merged["country"] = "US"
+                st.session_state["business_data"] = merged
+                # Pre-populate opening hours from scraper if found
+                if scraped.get("opening_hours"):
+                    for oh in scraped["opening_hours"]:
+                        d = oh.get("day", "")
+                        if d:
+                            st.session_state[f"open_{d}"] = True
+                            st.session_state[f"opens_{d}"] = oh.get("opens", "09:00")
+                            st.session_state[f"closes_{d}"] = oh.get("closes", "17:00")
+            except Exception as e:
+                st.warning(f"Scraping partially failed: {e} — continuing with AI enrichment.")
+
+        with st.spinner("Step 2/2 — Enriching with Claude Sonnet 4.5 for Wikidata, entity links, and topical authority..."):
+            try:
+                enriched = enrich_business(business_name, normalize_url(website_url), business_type)
                 st.session_state["ai_enriched"] = enriched
                 st.session_state["enriched"] = True
-                st.success("AI enrichment complete! Fields pre-filled below. Review and edit as needed.")
+                scraped_fields = len([v for v in scraped.values() if v])
+                st.success(
+                    f"Done! Scraped {scraped_fields} field(s) from the website. "
+                    "AI enrichment complete. Review fields below."
+                )
             except Exception as e:
                 st.error(f"AI enrichment failed: {e}")
                 st.session_state["ai_enriched"] = {}
@@ -206,7 +236,7 @@ if st.session_state["step"] == 1:
     with col8:
         state = st.text_input("State / Region", value=st.session_state["business_data"].get("state", ""))
         postal_code = st.text_input("Postal Code", value=st.session_state["business_data"].get("postal_code", ""))
-    country = st.text_input("Country", value=st.session_state["business_data"].get("country", ""), placeholder="e.g. US, AU, GB")
+    country = st.text_input("Country", value=st.session_state["business_data"].get("country", "US"), placeholder="e.g. US, AU, GB")
 
     st.markdown('<div class="section-header">Media</div>', unsafe_allow_html=True)
     col9, col10 = st.columns(2)
