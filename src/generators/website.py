@@ -1,8 +1,11 @@
 """
 WebSite and WebPage schema generators (all page types).
 """
-from src.generators.base import make_context, make_knows_about, make_same_as, make_area_served
-from src.generators.person import generate_person
+from src.generators.base import (
+    make_context, make_knows_about, make_same_as, make_area_served,
+    make_geo, make_aggregate_rating, make_service_area, make_has_offer_catalog,
+    make_opening_hours, make_postal_address,
+)
 from src.utils.helpers import build_id, normalize_url, clean_dict
 
 
@@ -101,14 +104,9 @@ def generate_homepage(data: dict) -> dict:
         "priceRange": data.get("price_range", ""),
     }
 
+    # additionalType: Wikipedia/Wikidata URLs go here, NOT in @type
     if data.get("additional_types"):
-        existing = org.get("@type", [])
-        if isinstance(existing, str):
-            existing = [existing]
-        for t in data["additional_types"]:
-            if t not in existing:
-                existing.append(t)
-        org["@type"] = existing
+        org["additionalType"] = data["additional_types"]
 
     if data.get("logo_url"):
         org["logo"] = {"@type": "ImageObject", "contentUrl": data["logo_url"]}
@@ -119,15 +117,13 @@ def generate_homepage(data: dict) -> dict:
     if data.get("has_map"):
         org["hasMap"] = data["has_map"]
 
-    if data.get("street_address") or data.get("city"):
-        org["address"] = {
-            "@type": "PostalAddress",
-            "streetAddress": data.get("street_address", ""),
-            "addressLocality": data.get("city", ""),
-            "addressRegion": data.get("state", ""),
-            "postalCode": data.get("postal_code", ""),
-            "addressCountry": data.get("country", ""),
-        }
+    address = make_postal_address(data)
+    if address:
+        org["address"] = address
+
+    geo = make_geo(data.get("latitude", ""), data.get("longitude", ""))
+    if geo:
+        org["geo"] = geo
 
     same_as = make_same_as(data.get("same_as", []))
     if same_as:
@@ -141,22 +137,35 @@ def generate_homepage(data: dict) -> dict:
     if area:
         org["areaServed"] = area
 
+    service_area = make_service_area(data)
+    if service_area:
+        org["serviceArea"] = service_area
+
+    rating = make_aggregate_rating(data)
+    if rating:
+        org["aggregateRating"] = rating
+
+    hours = make_opening_hours(data.get("opening_hours", []))
+    if hours:
+        org["openingHoursSpecification"] = hours
+
     services = data.get("services", [])
     if services:
-        org["makesOffer"] = {
-            "@type": "Offer",
-            "@id": build_id(base_url, "offer"),
-            "itemOffered": [
-                {
-                    "@type": "Service",
-                    "name": svc.get("name", ""),
-                    "url": svc.get("url", ""),
-                    "serviceType": svc.get("service_type", svc.get("name", "")),
-                }
-                for svc in services
-                if svc.get("name")
-            ],
-        }
+        catalog_name = f"{data.get('business_name', '')} Services".strip()
+        catalog = make_has_offer_catalog(services, org_id, catalog_name)
+        if catalog:
+            org["hasOfferCatalog"] = catalog
+
+    special_offers = data.get("special_offers", [])
+    if special_offers:
+        org["makesOffer"] = [
+            clean_dict({
+                "@type": "Offer",
+                "name": o.get("name", ""),
+                "description": o.get("description", ""),
+            })
+            for o in special_offers if o.get("name")
+        ]
 
     founder_name = data.get("founder_name", "")
     if founder_name:

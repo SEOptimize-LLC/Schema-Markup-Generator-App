@@ -1,5 +1,3 @@
-import re
-
 import streamlit as st
 
 from src.ai.enrichment import enrich_business, extract_from_fact_cheat, extract_from_blog_post
@@ -219,14 +217,27 @@ if st.session_state["step"] == 1:
                 svc_count = len(svc_pages)
 
         if locations_sitemap_url:
-            with st.spinner("Fetching location pages and extracting city names..."):
-                loc_pages = parse_sitemap(normalize_url(locations_sitemap_url), scrape_titles=True, max_pages=100)
+            with st.spinner("Fetching location URLs and extracting city names from slugs..."):
+                loc_pages = parse_sitemap(normalize_url(locations_sitemap_url), scrape_titles=False, max_pages=100)
             if loc_pages:
-                def _extract_city(name):
-                    match = re.search(r"\bin\s+(.+)$", name, re.IGNORECASE)
-                    return match.group(1).strip() if match else name.strip()
+                _stop_words = {
+                    "plumber", "plumbing", "hvac", "heating", "cooling", "electrician",
+                    "electrical", "roofer", "roofing", "dentist", "dental", "lawyer",
+                    "attorney", "contractor", "services", "service", "company", "repair",
+                    "installation", "install", "emergency", "local", "best", "top",
+                    "ut", "ca", "tx", "fl", "ny", "il", "oh", "pa", "wa", "az", "co",
+                    "ga", "nc", "mi", "nj", "va", "md", "mn", "mo", "wi", "tn", "in",
+                }
 
-                cities_from_sitemap = [_extract_city(p["name"]) for p in loc_pages]
+                def _slug_to_city(url: str) -> str:
+                    slug = url.rstrip("/").split("/")[-1]
+                    parts = slug.replace("-", " ").replace("_", " ").lower().split()
+                    city_parts = [w for w in parts if w not in _stop_words]
+                    name = " ".join(city_parts).title()
+                    return name if name else slug.replace("-", " ").title()
+
+                cities_from_sitemap = [_slug_to_city(p["url"]) for p in loc_pages if p.get("url")]
+                cities_from_sitemap = [c for c in cities_from_sitemap if c and len(c) > 2]
                 existing = st.session_state["business_data"].get("cities", [])
                 merged_cities = list(dict.fromkeys(existing + cities_from_sitemap))
                 bdata = dict(st.session_state["business_data"])
@@ -309,9 +320,11 @@ if st.session_state["step"] == 1:
     with col5:
         telephone = st.text_input("Telephone", value=st.session_state["business_data"].get("telephone", ""))
         email = st.text_input("Email", value=st.session_state["business_data"].get("email", ""))
+        payment_accepted = st.text_input("Payment Accepted", value=st.session_state["business_data"].get("payment_accepted", ""), placeholder="Cash, Credit Card, Financing")
     with col6:
         founding_date = st.text_input("Founding Date", value=st.session_state["business_data"].get("founding_date", ""), placeholder="YYYY or YYYY-MM-DD")
         price_range = st.selectbox("Price Range", ["", "$", "$$", "$$$", "$$$$"], index=["", "$", "$$", "$$$", "$$$$"].index(st.session_state["business_data"].get("price_range", "")))
+        currencies_accepted = st.text_input("Currencies Accepted", value=st.session_state["business_data"].get("currencies_accepted", "USD"), placeholder="USD")
 
     st.markdown('<div class="section-header">Address</div>', unsafe_allow_html=True)
     col7, col8 = st.columns(2)
@@ -322,6 +335,11 @@ if st.session_state["step"] == 1:
         state = st.text_input("State / Region", value=st.session_state["business_data"].get("state", ""))
         postal_code = st.text_input("Postal Code", value=st.session_state["business_data"].get("postal_code", ""))
     country = st.text_input("Country", value=st.session_state["business_data"].get("country", "US"), placeholder="e.g. US, AU, GB")
+    col_lat, col_lng = st.columns(2)
+    with col_lat:
+        latitude = st.text_input("Latitude", value=st.session_state["business_data"].get("latitude", ""), placeholder="e.g. 40.7128")
+    with col_lng:
+        longitude = st.text_input("Longitude", value=st.session_state["business_data"].get("longitude", ""), placeholder="e.g. -74.0060")
 
     st.markdown('<div class="section-header">Media</div>', unsafe_allow_html=True)
     col9, col10 = st.columns(2)
@@ -362,6 +380,13 @@ if st.session_state["step"] == 1:
 
     person_same_as_raw = st.text_area("Person sameAs (LinkedIn, Twitter, etc.)", value="\n".join(st.session_state["business_data"].get("person_same_as", [])), height=80, placeholder="https://www.linkedin.com/in/yourname/\nhttps://twitter.com/yourhandle")
 
+    st.markdown('<div class="section-header">Ratings</div>', unsafe_allow_html=True)
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        aggregate_rating_value = st.text_input("Average Rating", value=st.session_state["business_data"].get("aggregate_rating_value", ""), placeholder="e.g. 4.8")
+    with col_r2:
+        aggregate_rating_count = st.text_input("Review Count", value=st.session_state["business_data"].get("aggregate_rating_count", ""), placeholder="e.g. 2100")
+
     st.markdown('<div class="section-header">Area Served</div>', unsafe_allow_html=True)
     col13, col14 = st.columns(2)
     with col13:
@@ -369,6 +394,7 @@ if st.session_state["step"] == 1:
         area_served_name = st.text_input("Area Served Name (fallback)", value=st.session_state["business_data"].get("area_served_name", ai.get("area_served_suggestion", "")), placeholder="Greater Los Angeles")
     with col14:
         postal_codes_raw = st.text_area("Postal Codes (one per line or space-separated)", value="\n".join(st.session_state["business_data"].get("postal_codes", [])), height=100, placeholder="90001\n90002\n90210")
+        service_radius = st.text_input("Service Radius (meters)", value=st.session_state["business_data"].get("service_radius", ""), placeholder="e.g. 80000 (≈50 miles)", help="Radius in meters used for GeoCircle serviceArea. Requires Latitude/Longitude to be set.")
 
     st.markdown('<div class="section-header">Opening Hours</div>', unsafe_allow_html=True)
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -408,6 +434,21 @@ if st.session_state["step"] == 1:
             st.rerun()
         st.session_state["services"] = services
 
+        # ── Special Offers ────────────────────────────────────────────────────
+        st.markdown('<div class="section-header">Special Offers (makesOffer)</div>', unsafe_allow_html=True)
+        st.caption("Promotions like Free Estimates, Same-Day Service, Financing Available. One per line: Name | Description")
+        default_offers = "\n".join([
+            f"{o.get('name', '')} | {o.get('description', '')}"
+            for o in st.session_state["business_data"].get("special_offers", [])
+            if o.get("name")
+        ])
+        special_offers_raw = st.text_area(
+            "Special Offers (Name | Description)",
+            value=default_offers,
+            height=100,
+            placeholder="Free Estimates | Free quotations before any repair\nSame-Day Service | Available for most repairs\nFinancing Available | GreenSky and FTL financing",
+        )
+
     # ── Navigation ────────────────────────────────────────────────────────────
     st.markdown("---")
     if st.button("Next: Select Schemas →", type="primary", use_container_width=True):
@@ -423,6 +464,18 @@ if st.session_state["step"] == 1:
                     entry["wikipedia_url"] = parts[2]
                 knows_about.append(entry)
 
+        # Parse special offers (Name | Description per line)
+        special_offers = []
+        if st.session_state.get("business_type") == "Local / Service Business":
+            raw_offers = locals().get("special_offers_raw", "")
+            for line in raw_offers.strip().split("\n"):
+                parts = [p.strip() for p in line.split("|")]
+                if parts[0]:
+                    special_offers.append({
+                        "name": parts[0],
+                        "description": parts[1] if len(parts) > 1 else "",
+                    })
+
         st.session_state["business_data"] = {
             "business_name": business_name,
             "website_url": normalize_url(website_url),
@@ -437,14 +490,20 @@ if st.session_state["step"] == 1:
             "email": email,
             "founding_date": founding_date,
             "price_range": price_range,
+            "payment_accepted": payment_accepted,
+            "currencies_accepted": currencies_accepted,
             "street_address": street_address,
             "city": city,
             "state": state,
             "postal_code": postal_code,
             "country": country,
+            "latitude": latitude,
+            "longitude": longitude,
             "logo_url": logo_url,
             "image_url": image_url,
             "has_map": has_map,
+            "aggregate_rating_value": aggregate_rating_value,
+            "aggregate_rating_count": aggregate_rating_count,
             "same_as": parse_urls_input(same_as_raw),
             "knows_about": knows_about,
             "knows_about_raw": knows_about,
@@ -459,8 +518,10 @@ if st.session_state["step"] == 1:
             "cities": parse_cities_input(cities_raw),
             "postal_codes": parse_postal_codes(postal_codes_raw),
             "area_served_name": area_served_name,
+            "service_radius": service_radius,
             "opening_hours": opening_hours,
             "services": [s for s in st.session_state["services"] if s.get("name")],
+            "special_offers": special_offers,
             "language": "en",
         }
         st.session_state["step"] = 2
@@ -542,7 +603,7 @@ elif st.session_state["step"] == 3:
                 data["page_description"] = st.text_area("Meta Description", value=data.get("page_description", data.get("description", "")), height=80, key="hp_desc")
                 # Pre-fill related links from scraped nav if available
                 nav_links = st.session_state.get("scraped_nav_links", [])
-                default_related = data.get("related_links") or [l["url"] for l in nav_links[:6]]
+                default_related = data.get("related_links") or [link["url"] for link in nav_links[:6]]
                 related_links_raw = st.text_area("relatedLink URLs (one per line)", value="\n".join(default_related), height=80, key="hp_related", placeholder=f"{base_url}/about\n{base_url}/services\n{base_url}/contact")
                 data["related_links"] = parse_urls_input(related_links_raw)
 

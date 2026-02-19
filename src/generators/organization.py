@@ -4,7 +4,8 @@ Organization and LocalBusiness schema generators.
 from src.generators.base import (
     make_context, make_postal_address, make_area_served, make_opening_hours,
     make_image_object, make_logo, make_contact_point, make_knows_about,
-    make_same_as, make_offer,
+    make_same_as, make_offer, make_geo, make_aggregate_rating,
+    make_service_area, make_has_offer_catalog,
 )
 from src.utils.helpers import build_id, normalize_url, clean_dict
 
@@ -71,6 +72,10 @@ def generate_organization(data: dict) -> dict:
     if area:
         schema["areaServed"] = area
 
+    rating = make_aggregate_rating(data)
+    if rating:
+        schema["aggregateRating"] = rating
+
     return clean_dict(schema)
 
 
@@ -91,7 +96,6 @@ def generate_local_business(data: dict) -> dict:
         "@context": make_context(),
         "@type": schema_type,
         "@id": org_id,
-        "additionalType": ["LocalBusiness", "Organization"],
         "name": data.get("business_name", ""),
         "legalName": data.get("legal_name", "") or data.get("business_name", ""),
         "alternateName": data.get("alternate_name", ""),
@@ -108,12 +112,13 @@ def generate_local_business(data: dict) -> dict:
         "foundingLocation": data.get("founding_location", ""),
     }
 
+    # additionalType: Schema.org types only, then user-supplied Wikipedia/Wikidata URLs
+    add_types = ["LocalBusiness", "Organization"]
     if data.get("additional_types"):
-        existing = schema.get("additionalType", [])
         for t in data["additional_types"]:
-            if t not in existing:
-                existing.append(t)
-        schema["additionalType"] = existing
+            if t not in add_types:
+                add_types.append(t)
+    schema["additionalType"] = add_types
 
     if data.get("logo_url"):
         schema["logo"] = make_logo(data["logo_url"])
@@ -127,6 +132,10 @@ def generate_local_business(data: dict) -> dict:
     address = make_postal_address(data)
     if address:
         schema["address"] = address
+
+    geo = make_geo(data.get("latitude", ""), data.get("longitude", ""))
+    if geo:
+        schema["geo"] = geo
 
     knows_about_items = data.get("knows_about", [])
     if knows_about_items:
@@ -149,22 +158,33 @@ def generate_local_business(data: dict) -> dict:
     if area:
         schema["areaServed"] = area
 
+    service_area = make_service_area(data)
+    if service_area:
+        schema["serviceArea"] = service_area
+
+    rating = make_aggregate_rating(data)
+    if rating:
+        schema["aggregateRating"] = rating
+
+    # hasOfferCatalog — curated service catalog
     services = data.get("services", [])
     if services:
-        schema["makesOffer"] = {
-            "@type": "Offer",
-            "itemOffered": [
-                {
-                    "@type": "Service",
-                    "name": svc.get("name", ""),
-                    "url": svc.get("url", ""),
-                    "serviceType": svc.get("service_type", svc.get("name", "")),
-                    "audience": svc.get("audience", ""),
-                }
-                for svc in services
-                if svc.get("name")
-            ],
-        }
+        catalog_name = f"{data.get('business_name', '')} Services".strip()
+        catalog = make_has_offer_catalog(services, org_id, catalog_name)
+        if catalog:
+            schema["hasOfferCatalog"] = catalog
+
+    # makesOffer — special offers (Free Estimates, Financing, etc.)
+    special_offers = data.get("special_offers", [])
+    if special_offers:
+        schema["makesOffer"] = [
+            clean_dict({
+                "@type": "Offer",
+                "name": o.get("name", ""),
+                "description": o.get("description", ""),
+            })
+            for o in special_offers if o.get("name")
+        ]
 
     if data.get("founder_name"):
         schema["founder"] = {

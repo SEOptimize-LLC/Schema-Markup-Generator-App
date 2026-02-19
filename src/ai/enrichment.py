@@ -119,6 +119,7 @@ Return ONLY valid JSON (no markdown, no explanation) with this structure (omit a
 {{
   "business_name": "exact business name",
   "legal_name": "legal entity name if different",
+  "alternate_name": "any alternate name or DBA name",
   "founder_name": "founder or CEO name",
   "job_title": "founder's job title",
   "telephone": "primary phone number",
@@ -132,20 +133,27 @@ Return ONLY valid JSON (no markdown, no explanation) with this structure (omit a
   "state": "state or region",
   "postal_code": "postal code",
   "country": "country",
+  "latitude": "GPS latitude as decimal string (e.g. 40.7128)",
+  "longitude": "GPS longitude as decimal string (e.g. -74.0060)",
   "founding_date": "founding year or date",
   "founding_location": "city, state where founded",
   "price_range": "$ or $$ or $$$ or $$$$ based on pricing signals",
   "has_map": "Google Maps URL if found",
   "aggregate_rating_value": "average rating number (e.g. 4.8)",
   "aggregate_rating_count": "number of reviews as string",
-  "payment_accepted": "payment methods accepted",
+  "payment_accepted": "payment methods accepted (e.g. Cash, Credit Card, Financing)",
+  "currencies_accepted": "currency code(s) accepted (e.g. USD)",
+  "service_radius": "service radius in meters as string (e.g. 80000 for ~50 miles)",
   "cities": ["every", "individual", "city", "county", "or", "area", "served"],
   "area_served_name": "general service area label e.g. Greater Salt Lake City",
   "opening_hours": [
     {{"day": "Monday", "opens": "09:00", "closes": "17:00"}}
   ],
   "services": [
-    {{"name": "service name", "url": "", "service_type": "service type", "audience": ""}}
+    {{"name": "service name", "url": "", "service_type": "service type", "description": "brief service description", "audience": ""}}
+  ],
+  "special_offers": [
+    {{"name": "offer name e.g. Free Estimates", "description": "offer description"}}
   ],
   "has_24_7": true,
   "is_licensed": true,
@@ -159,11 +167,16 @@ Return ONLY valid JSON (no markdown, no explanation) with this structure (omit a
 
 Rules:
 - Extract only information explicitly stated. Do not fabricate.
+- "alternate_name": extract any DBA name, short name, or alternate brand name mentioned.
+- "latitude" / "longitude": extract GPS coordinates if mentioned anywhere in the document.
+- "service_radius": if a service radius or coverage distance is mentioned (e.g. "serves within 50 miles"), convert to meters (1 mile ≈ 1609 meters).
+- "currencies_accepted": default to "USD" if business is US-based and no currency is mentioned.
 - "cities": split ALL individual cities, towns, and counties from service area text. E.g. "Serves Salt Lake, Utah, & Davis Counties" → ["Salt Lake County", "Utah County", "Davis County"]. Include every named place from any list or sentence describing service coverage.
 - "country": default to "US" whenever city/state names are clearly American (Utah, Texas, California, etc.). Only use a different country if explicitly stated.
 - "state": extract full US state name or abbreviation from any city/state references in the document.
 - "opening_hours": if document says "24/7" or "available 24 hours", set all 7 days to opens "00:00" closes "23:59".
-- "services": extract every distinct service or service category mentioned anywhere.
+- "services": extract every distinct service or service category mentioned anywhere. Include a brief description for each if available.
+- "special_offers": extract any special offers like "Free Estimates", "Same-Day Service", "Financing Available", "Senior Discounts", etc.
 """
 
 
