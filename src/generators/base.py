@@ -144,7 +144,6 @@ def make_offer(data: dict) -> dict:
         "name": data.get("offer_name", ""),
         "url": data.get("offer_url", ""),
         "priceCurrency": data.get("currency", ""),
-        "businessFunction": "http://purl.org/goodrelations/v1#ProvideService",
     })
     if data.get("low_price"):
         offer["lowPrice"] = data["low_price"]

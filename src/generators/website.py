@@ -146,7 +146,6 @@ def generate_homepage(data: dict) -> dict:
         org["makesOffer"] = {
             "@type": "Offer",
             "@id": build_id(base_url, "offer"),
-            "businessFunction": "http://purl.org/goodrelations/v1#ProvideService",
             "itemOffered": [
                 {
                     "@type": "Service",
