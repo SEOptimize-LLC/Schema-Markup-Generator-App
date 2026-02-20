@@ -79,6 +79,46 @@ def generate_organization(data: dict) -> dict:
     return clean_dict(schema)
 
 
+# Map AI-hallucinated / non-existent schema.org types → correct equivalents
+_TYPE_CORRECTIONS = {
+    # Plumbing
+    "PlumbingBusiness": "Plumber",
+    "PlumbingService": "Plumber",
+    "PlumbingContractor": "Plumber",
+    # HVAC
+    "HVACService": "HVACBusiness",
+    "HVACContractor": "HVACBusiness",
+    "HeatingAndCooling": "HVACBusiness",
+    "HeatingCoolingBusiness": "HVACBusiness",
+    "AirConditioningBusiness": "HVACBusiness",
+    # Electrical
+    "ElectricalBusiness": "Electrician",
+    "ElectricalContractor": "Electrician",
+    "ElectricalService": "Electrician",
+    # Roofing
+    "RoofingBusiness": "RoofingContractor",
+    "RoofingService": "RoofingContractor",
+    # Dental
+    "DentalBusiness": "Dentist",
+    "DentalOffice": "DentalClinic",
+    "DentalPractice": "Dentist",
+    # Legal
+    "LawFirm": "LegalService",
+    "LawOffice": "LegalService",
+    "AttorneyOffice": "Attorney",
+    # Auto
+    "AutoRepairBusiness": "AutoRepair",
+    "AutoRepairShop": "AutoRepair",
+    # Other
+    "RestaurantBusiness": "Restaurant",
+    "MedicalPractice": "MedicalClinic",
+    "MedicalOffice": "MedicalClinic",
+    "InsuranceBusiness": "InsuranceAgency",
+    "RealEstateBusiness": "RealEstateAgent",
+    "AccountingBusiness": "AccountingService",
+}
+
+
 def generate_local_business(data: dict) -> dict:
     """
     Generate a LocalBusiness schema with full address, hours, areaServed.
@@ -89,6 +129,8 @@ def generate_local_business(data: dict) -> dict:
     person_id = build_id(base_url, "person")
 
     schema_type = data.get("schema_subtype", "LocalBusiness")
+    # Correct invalid/hallucinated types
+    schema_type = _TYPE_CORRECTIONS.get(schema_type, schema_type)
     if schema_type in ("Organization", "OnlineBusiness", ""):
         schema_type = "LocalBusiness"
 

@@ -25,7 +25,7 @@ Business Type: {business_type}
 
 Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 {{
-  "schema_subtype": "The most specific schema.org LocalBusiness subtype (e.g. HVACBusiness, LegalService, Dentist, AutoRepair, etc.) or 'Organization' for SaaS/ecom",
+  "schema_subtype": "The most specific VALID schema.org type. Use ONLY real schema.org types — never invent compound names. Correct examples: Plumber (NOT PlumbingBusiness), HVACBusiness (NOT HVACService), Electrician (NOT ElectricalContractor), RoofingContractor (NOT RoofingBusiness), Dentist, LegalService, AutoRepair, Restaurant, MedicalClinic, AccountingService, InsuranceAgency, RealEstateAgent, Veterinary, LodgingBusiness, HealthClub. Use 'LocalBusiness' for trades not covered above. Use 'Organization' only for SaaS/ecom.",
   "wikidata_business_id": "Wikidata entity URL for the business category (e.g. https://www.wikidata.org/wiki/Q1798773 for HVAC). Use empty string if unsure.",
   "wikipedia_business_url": "Wikipedia article URL for the business type (e.g. https://en.wikipedia.org/wiki/Heating,_ventilation,_and_air_conditioning). Use empty string if unsure.",
   "description": "A 2-3 sentence factual description of what this business does, written in third person, suitable for schema description property.",

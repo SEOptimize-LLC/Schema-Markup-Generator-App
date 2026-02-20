@@ -201,23 +201,60 @@ if st.session_state["step"] == 1:
             with st.spinner("Fetching service pages and extracting titles/H1s... (this may take ~30 seconds)"):
                 svc_pages = parse_sitemap(normalize_url(service_sitemap_url), scrape_titles=True, max_pages=100)
             if svc_pages:
-                # Slugs that indicate non-service pages
+                # Exact slug matches that indicate non-service pages
                 _non_service_slugs = {
+                    # Home
                     "home", "homepage", "index",
-                    "about", "about-us", "our-story", "our-team", "team", "meet-the-team", "staff",
-                    "contact", "contact-us", "get-in-touch", "reach-us",
+                    # About / company
+                    "about", "about-us", "our-story", "our-team", "team",
+                    "meet-the-team", "meet-our-team", "staff", "who-we-are",
+                    "our-company", "company", "leadership",
+                    # Contact
+                    "contact", "contact-us", "get-in-touch", "reach-us", "locations",
+                    # Blog / content
                     "blog", "news", "articles", "resources", "posts", "updates",
-                    "testimonials", "reviews", "review-us", "leave-a-review", "our-reviews",
-                    "coupons", "coupon", "deals", "promotions", "special-offers", "specials", "offers",
-                    "privacy-policy", "privacy", "terms", "terms-of-service", "tos", "legal",
-                    "sitemap", "site-map",
-                    "careers", "jobs", "employment", "work-with-us",
+                    "learning-center", "tips", "guides",
+                    # Social proof
+                    "testimonials", "reviews", "review-us", "leave-a-review",
+                    "our-reviews", "view-our-reviews", "google-reviews",
+                    "write-a-review", "read-reviews",
+                    # Coupons / offers
+                    "coupons", "coupon", "deals", "promotions", "special-offers",
+                    "specials", "offers", "current-offers", "seasonal-offers",
+                    "rebates", "discounts", "savings",
+                    # Legal
+                    "privacy-policy", "privacy", "terms", "terms-of-service",
+                    "tos", "legal", "accessibility", "disclaimer",
+                    # Technical
+                    "sitemap", "site-map", "404", "not-found", "search",
+                    "thank-you", "thanks", "thankyou", "confirmation",
+                    # Careers
+                    "careers", "jobs", "employment", "work-with-us", "join-our-team",
+                    # FAQ
                     "faq", "faqs", "frequently-asked-questions",
-                    "gallery", "photos", "portfolio",
-                    "financing", "payment-options",
-                    "service-area", "service-areas", "areas-we-serve",
-                    "404", "not-found", "search",
+                    # Media
+                    "gallery", "photos", "photo-gallery", "portfolio", "our-work",
+                    "recent-work", "projects", "before-after",
+                    # Quotes / requests
+                    "get-a-quote", "free-quote", "request-a-quote", "quote-request",
+                    "get-quote", "request-quote", "free-estimate", "get-an-estimate",
+                    "schedule", "book", "book-online", "book-now", "appointment",
+                    # Financing / plans / memberships
+                    "financing", "payment-options", "payment-plans",
+                    "plans", "service-plans", "membership", "memberships",
+                    "maintenance-plan", "maintenance-plans", "premier-plans",
+                    # Service areas
+                    "service-area", "service-areas", "areas-we-serve", "areas-served",
+                    "coverage-area",
                 }
+
+                # Keyword fragments — if the slug CONTAINS any of these it's not a service
+                _non_service_fragments = (
+                    "thank-you", "thank_you", "get-a-quote", "get-quote",
+                    "free-quote", "free-estimate", "request-quote", "request-estimate",
+                    "review-us", "write-review", "leave-review",
+                    "sign-up", "signup", "subscribe",
+                )
 
                 def _is_service_url(url: str) -> bool:
                     from urllib.parse import urlparse as _up
@@ -229,6 +266,9 @@ if st.session_state["step"] == 1:
                         return False
                     # Filter deprecated -old / _old slug variants
                     if slug.endswith("-old") or slug.endswith("_old"):
+                        return False
+                    # Fragment-based check for common non-service patterns
+                    if any(frag in slug for frag in _non_service_fragments):
                         return False
                     return True
 
