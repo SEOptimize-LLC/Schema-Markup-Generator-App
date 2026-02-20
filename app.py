@@ -225,7 +225,12 @@ if st.session_state["step"] == 1:
                     if not path or path == "":
                         return False
                     slug = path.split("/")[-1].lower()
-                    return slug not in _non_service_slugs
+                    if slug in _non_service_slugs:
+                        return False
+                    # Filter deprecated -old / _old slug variants
+                    if slug.endswith("-old") or slug.endswith("_old"):
+                        return False
+                    return True
 
                 service_pages = [p for p in svc_pages if _is_service_url(p["url"])]
                 other_pages = [p for p in svc_pages if not _is_service_url(p["url"])]
