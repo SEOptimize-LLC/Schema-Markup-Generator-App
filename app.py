@@ -249,11 +249,31 @@ if st.session_state["step"] == 1:
                 }
 
                 # Keyword fragments — if the slug CONTAINS any of these it's not a service
+                # These catch branded/prefixed variants like /beehive-plumbing-coupons/ or /utah-master-plumbers/
                 _non_service_fragments = (
-                    "thank-you", "thank_you", "get-a-quote", "get-quote",
-                    "free-quote", "free-estimate", "request-quote", "request-estimate",
+                    # Thank you / confirmation
+                    "thank-you", "thank_you",
+                    # Quote / estimate requests
+                    "get-a-quote", "get-quote", "free-quote", "free-estimate",
+                    "request-quote", "request-estimate",
+                    # Reviews
                     "review-us", "write-review", "leave-review",
+                    # Sign up
                     "sign-up", "signup", "subscribe",
+                    # Coupons (catches /beehive-plumbing-coupons/, /plumbing-coupons/)
+                    "coupon",
+                    # Offers / deals (catches /special-plumbing-offer/)
+                    "special-offer",
+                    # Our work / portfolio (catches /our-recent-work/, /our-work-gallery/)
+                    "our-work",
+                    # Company identity (catches /beehive-who-we-are/)
+                    "who-we-are",
+                    # Legal (catches /terms-privacy-policy/, /privacy-and-terms/)
+                    "privacy", "terms-of", "terms-and",
+                    # Team / staff (catches /utah-master-plumbers/, /our-expert-team/)
+                    "master-plumber", "our-expert", "meet-our", "our-plumber",
+                    # Misc
+                    "work-gallery", "our-gallery",
                 )
 
                 def _is_service_url(url: str) -> bool:
