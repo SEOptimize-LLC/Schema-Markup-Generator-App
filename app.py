@@ -456,6 +456,18 @@ if st.session_state["step"] == 1:
         st.markdown('<div class="section-header">Services</div>', unsafe_allow_html=True)
         st.caption("Add the services this business offers.")
         services = st.session_state["services"]
+
+        # Deferred key sync: runs BEFORE widgets render, on the rerun after a remove
+        if st.session_state.pop("_svc_keys_dirty", False):
+            for i, s in enumerate(services):
+                st.session_state[f"svc_name_{i}"] = s.get("name", "")
+                st.session_state[f"svc_url_{i}"] = s.get("url", "")
+                st.session_state[f"svc_type_{i}"] = s.get("service_type", s.get("name", ""))
+            # Clear stale keys beyond current length
+            for stale_i in range(len(services), len(services) + 20):
+                for k in [f"svc_name_{stale_i}", f"svc_url_{stale_i}", f"svc_type_{stale_i}", f"rm_svc_{stale_i}"]:
+                    st.session_state.pop(k, None)
+
         for idx, svc in enumerate(services):
             col_s1, col_s2, col_s3 = st.columns([3, 3, 1])
             with col_s1:
@@ -466,15 +478,7 @@ if st.session_state["step"] == 1:
                 if st.button("−", key=f"rm_svc_{idx}") and len(services) > 1:
                     services.pop(idx)
                     st.session_state["services"] = services
-                    # Sync widget keys to new indices to avoid Streamlit cache mismatch
-                    for i, s in enumerate(services):
-                        st.session_state[f"svc_name_{i}"] = s.get("name", "")
-                        st.session_state[f"svc_url_{i}"] = s.get("url", "")
-                        st.session_state[f"svc_type_{i}"] = s.get("service_type", s.get("name", ""))
-                    # Remove stale keys from the now-deleted last slot
-                    stale = len(services)
-                    for k in [f"svc_name_{stale}", f"svc_url_{stale}", f"svc_type_{stale}", f"rm_svc_{stale}"]:
-                        st.session_state.pop(k, None)
+                    st.session_state["_svc_keys_dirty"] = True
                     st.rerun()
             services[idx]["service_type"] = st.text_input(f"Service Type {idx+1}", value=svc.get("service_type", svc.get("name", "")), key=f"svc_type_{idx}")
         if st.button("+ Add Service"):
