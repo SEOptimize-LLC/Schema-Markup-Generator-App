@@ -199,22 +199,60 @@ if st.session_state["step"] == 1:
 
         if service_sitemap_url:
             with st.spinner("Fetching service pages and extracting titles/H1s... (this may take ~30 seconds)"):
-                svc_pages = parse_sitemap(normalize_url(service_sitemap_url), scrape_titles=True, max_pages=50)
+                svc_pages = parse_sitemap(normalize_url(service_sitemap_url), scrape_titles=True, max_pages=100)
             if svc_pages:
-                st.session_state["services"] = [
-                    {
-                        "name": p["name"],
-                        "url": p["url"],
-                        "service_type": p["name"],
-                        "audience": "",
-                    }
-                    for p in svc_pages
-                ]
-                for idx, s in enumerate(st.session_state["services"]):
-                    st.session_state[f"svc_name_{idx}"] = s["name"]
-                    st.session_state[f"svc_url_{idx}"] = s["url"]
-                    st.session_state[f"svc_type_{idx}"] = s["name"]
-                svc_count = len(svc_pages)
+                # Slugs that indicate non-service pages
+                _non_service_slugs = {
+                    "home", "homepage", "index",
+                    "about", "about-us", "our-story", "our-team", "team", "meet-the-team", "staff",
+                    "contact", "contact-us", "get-in-touch", "reach-us",
+                    "blog", "news", "articles", "resources", "posts", "updates",
+                    "testimonials", "reviews", "review-us", "leave-a-review", "our-reviews",
+                    "coupons", "coupon", "deals", "promotions", "special-offers", "specials", "offers",
+                    "privacy-policy", "privacy", "terms", "terms-of-service", "tos", "legal",
+                    "sitemap", "site-map",
+                    "careers", "jobs", "employment", "work-with-us",
+                    "faq", "faqs", "frequently-asked-questions",
+                    "gallery", "photos", "portfolio",
+                    "financing", "payment-options",
+                    "service-area", "service-areas", "areas-we-serve",
+                    "404", "not-found", "search",
+                }
+
+                def _is_service_url(url: str) -> bool:
+                    from urllib.parse import urlparse as _up
+                    path = _up(url).path.rstrip("/")
+                    if not path or path == "":
+                        return False
+                    slug = path.split("/")[-1].lower()
+                    return slug not in _non_service_slugs
+
+                service_pages = [p for p in svc_pages if _is_service_url(p["url"])]
+                other_pages = [p for p in svc_pages if not _is_service_url(p["url"])]
+
+                if service_pages:
+                    st.session_state["services"] = [
+                        {
+                            "name": p["name"],
+                            "url": p["url"],
+                            "service_type": p["name"],
+                            "audience": "",
+                        }
+                        for p in service_pages
+                    ]
+                    for idx, s in enumerate(st.session_state["services"]):
+                        st.session_state[f"svc_name_{idx}"] = s["name"]
+                        st.session_state[f"svc_url_{idx}"] = s["url"]
+                        st.session_state[f"svc_type_{idx}"] = s["name"]
+                    svc_count = len(service_pages)
+
+                # Add non-service pages to related_links
+                if other_pages:
+                    bdata = dict(st.session_state["business_data"])
+                    existing_related = bdata.get("related_links", [])
+                    other_urls = [p["url"] for p in other_pages]
+                    bdata["related_links"] = list(dict.fromkeys(existing_related + other_urls))
+                    st.session_state["business_data"] = bdata
 
         if locations_sitemap_url:
             with st.spinner("Fetching location URLs and extracting city names from slugs..."):
@@ -427,6 +465,16 @@ if st.session_state["step"] == 1:
             with col_s3:
                 if st.button("−", key=f"rm_svc_{idx}") and len(services) > 1:
                     services.pop(idx)
+                    st.session_state["services"] = services
+                    # Sync widget keys to new indices to avoid Streamlit cache mismatch
+                    for i, s in enumerate(services):
+                        st.session_state[f"svc_name_{i}"] = s.get("name", "")
+                        st.session_state[f"svc_url_{i}"] = s.get("url", "")
+                        st.session_state[f"svc_type_{i}"] = s.get("service_type", s.get("name", ""))
+                    # Remove stale keys from the now-deleted last slot
+                    stale = len(services)
+                    for k in [f"svc_name_{stale}", f"svc_url_{stale}", f"svc_type_{stale}", f"rm_svc_{stale}"]:
+                        st.session_state.pop(k, None)
                     st.rerun()
             services[idx]["service_type"] = st.text_input(f"Service Type {idx+1}", value=svc.get("service_type", svc.get("name", "")), key=f"svc_type_{idx}")
         if st.button("+ Add Service"):
