@@ -1,6 +1,45 @@
 import json
+import re
 import streamlit as st
 from openai import OpenAI
+
+
+def _extract_json(raw: str):
+    """Robustly extract JSON from an LLM response that may contain markdown fences or extra text."""
+    raw = raw.strip()
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", raw, re.DOTALL)
+    if fence_match:
+        raw = fence_match.group(1).strip()
+    # Find the outermost JSON object or array
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start = raw.find(start_char)
+        if start == -1:
+            continue
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(raw)):
+            c = raw[i]
+            if escape:
+                escape = False
+                continue
+            if c == '\\' and in_string:
+                escape = True
+                continue
+            if c == '"' and not escape:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == start_char:
+                depth += 1
+            elif c == end_char:
+                depth -= 1
+                if depth == 0:
+                    return json.loads(raw[start:i + 1])
+    # Fallback: try parsing the whole thing
+    return json.loads(raw)
 
 
 def get_client() -> OpenAI:
@@ -85,7 +124,7 @@ def enrich_business(business_name: str, website_url: str, business_type: str) ->
         lines = raw.split("\n")
         raw = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
 
-    return json.loads(raw)
+    return _extract_json(raw)
 
 
 WIKIDATA_PROMPT = """You are a semantic SEO expert. Given a list of topics related to a business, return Wikidata entity IDs for each topic.
@@ -191,7 +230,7 @@ def extract_from_fact_cheat(fact_cheat_content: str) -> dict:
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.1,
-        max_tokens=3000,
+        max_tokens=6000,
     )
 
     raw = response.choices[0].message.content.strip()
@@ -199,7 +238,7 @@ def extract_from_fact_cheat(fact_cheat_content: str) -> dict:
         lines = raw.split("\n")
         raw = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
 
-    return json.loads(raw)
+    return _extract_json(raw)
 
 
 BLOG_POST_EXTRACTION_PROMPT = """You are a semantic SEO expert. Given the full text of a blog post, extract structured metadata for building a comprehensive BlogPosting schema.
@@ -259,7 +298,7 @@ def extract_from_blog_post(post_content: str, business_name: str, website_url: s
         lines = raw.split("\n")
         raw = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
 
-    return json.loads(raw)
+    return _extract_json(raw)
 
 
 def suggest_wikidata_for_topics(topics: list[str], business_name: str, business_type: str) -> list[dict]:
@@ -288,4 +327,4 @@ def suggest_wikidata_for_topics(topics: list[str], business_name: str, business_
         lines = raw.split("\n")
         raw = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
 
-    return json.loads(raw)
+    return _extract_json(raw)
